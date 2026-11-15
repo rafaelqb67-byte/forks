@@ -7,44 +7,65 @@ jobs:
   android:
     runs-on: ubuntu-24.04
     steps:
-      # Este repositório: contém só o overlay.zip (as alterações do NovaSX2)
-      - uses: actions/checkout@v4
+      # 1. Baixa o seu repositório (onde está o overlay.zip)
+      - name: Checkout NovaSX2 overlay
+        uses: actions/checkout@v4
 
-      # Código original do ARMSX2, na versão exata usada no fork
-      - uses: actions/checkout@v4
+      # 2. Baixa o código-fonte original do ARMSX2 no commit exato
+      - name: Checkout ARMSX2 base
+        uses: actions/checkout@v4
         with:
           repository: ARMSX2/ARMSX2
           ref: c111e3ad925e74a2ded22a8dd6fbf9338e0873e9
           path: src
           submodules: recursive
 
+      # 3. Extrai as alterações por cima do código base
       - name: Aplicar alterações do NovaSX2
-        run: unzip -o overlay.zip -d src
+        run: |
+          if [ ! -f "overlay.zip" ]; then
+            echo "Erro: overlay.zip não encontrado na raiz do repositório."
+            exit 1
+          fi
+          unzip -o overlay.zip -d src
 
-      - uses: actions/setup-java@v4
+      # 4. Configura Java 17 e Android SDK
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
 
+      # 5. Aceita licenças e instala NDK + CMake sem ocultar erros
       - name: Install NDK + CMake
-        run: yes | sdkmanager "ndk;29.0.14206865" "cmake;3.31.6" >/dev/null || true
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "ndk;29.0.14206865" "cmake;3.31.6"
 
+      # 6. Baixa dependências do shaderc
       - name: Fetch shaderc third-party deps
         working-directory: src/platforms/android
         run: python3 app/src/main/cpp/3rdparty/shaderc/utils/git-sync-deps
 
+      # 7. Configura target ARM64 do Rust
       - name: Install Rust Android target
         run: rustup target add aarch64-linux-android
 
+      # 8. Compila o APK
       - name: Build APK
         working-directory: src/platforms/android
-        run: ./gradlew :app:assembleGithubRelease --stacktrace
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleGithubRelease --stacktrace
 
-      - uses: actions/upload-artifact@v4
+      # 9. Disponibiliza o APK para download na aba Actions
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
         with:
           name: NovaSX2-apk
           path: src/platforms/android/app/build/outputs/apk/**/*.apk
