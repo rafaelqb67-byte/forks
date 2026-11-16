@@ -1,0 +1,64 @@
+name: Android APK (NovaSX2)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      # Este repositório: contém só o overlay.zip (as alterações do NovaSX2)
+      - uses: actions/checkout@v4
+
+      # Código original do ARMSX2, na versão exata usada no fork
+      - uses: actions/checkout@v4
+        with:
+          repository: ARMSX2/ARMSX2
+          ref: c111e3ad925e74a2ded22a8dd6fbf9338e0873e9
+          path: src
+          submodules: recursive
+
+      - name: Aplicar alterações do NovaSX2
+        run: unzip -o overlay.zip -d src
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install NDK + CMake
+        run: yes | sdkmanager "ndk;29.0.14206865" "cmake;3.31.6" >/dev/null || true
+
+      - name: Fetch shaderc third-party deps
+        working-directory: src/platforms/android
+        run: python3 app/src/main/cpp/3rdparty/shaderc/utils/git-sync-deps
+
+      - name: Install Rust Android target
+        run: rustup target add aarch64-linux-android
+
+      - name: Build APK
+        working-directory: src/platforms/android
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleGithubRelease -Parmsx2.versionName=2.9.4-nova 2>&1 | tee build.log
+
+      - name: Resumo dos erros
+        if: failure()
+        working-directory: src/platforms/android
+        run: |
+          {
+            echo '## Erros do build'
+            echo '```'
+            grep -nE "^e: |What went wrong|error:|FAILED|Unresolved|Could not" build.log | head -60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NovaSX2-apk
+          path: src/platforms/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
