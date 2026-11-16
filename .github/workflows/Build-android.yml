@@ -19,7 +19,10 @@ jobs:
           submodules: recursive
 
       - name: Aplicar alterações do NovaSX2
-        run: unzip -o overlay.zip -d src
+        run: |
+          unzip -o overlay.zip -d src
+          # o menu antigo foi substituído por NavigationHub.kt; o arquivo original precisa sair
+          rm -f src/platforms/android/app/src/main/java/com/armsx2/navigation/NavigationDrawer.kt
 
       - uses: actions/setup-java@v4
         with:
